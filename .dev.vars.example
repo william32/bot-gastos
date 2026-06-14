@@ -1,0 +1,4 @@
+BOT_TOKEN=tu_token_de_telegram
+TURSO_URL=https://tu-database.turso.io
+TURSO_TOKEN=tu_token_de_turso
+TELEGRAM_ID=tu_id_numerico
