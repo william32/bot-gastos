@@ -27,7 +27,14 @@ npm install
 cp .dev.vars.example .dev.vars
 ```
 
-Edita `.dev.vars` con tus credenciales:
+Edita `.dev.vars` con tus credenciales. Debe verse así:
+
+```
+BOT_TOKEN=1234567890:AAHhGx...sKjV
+TURSO_URL=https://bot-gastos-ggaubert.aws-us-east-2.turso.io
+TURSO_TOKEN=eyJhbGciOiJIUzI1NiIs...
+TELEGRAM_ID=123456789
+```
 
 | Variable | Descripción | Cómo obtenerla |
 |---|---|---|
