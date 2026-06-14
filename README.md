@@ -119,4 +119,11 @@ CREATE TABLE transacciones (
   mes INTEGER NOT NULL,
   fecha TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE user_config (
+  telegram_id INTEGER NOT NULL,
+  clave TEXT NOT NULL,
+  valor TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (telegram_id, clave)
+);
 ```
