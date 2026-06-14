@@ -81,6 +81,12 @@ export function createDb(env: Env) {
     await exec(
       `CREATE INDEX IF NOT EXISTS idx_trans_user_mes ON transacciones(telegram_id, anio, mes)`
     )
+    await exec(`CREATE TABLE IF NOT EXISTS user_config (
+      telegram_id INTEGER NOT NULL,
+      clave TEXT NOT NULL,
+      valor TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (telegram_id, clave)
+    )`)
   }
 
   async function getSaldo(telegramId: number): Promise<number> {
@@ -160,7 +166,50 @@ export function createDb(env: Env) {
     await exec(`DELETE FROM transacciones WHERE telegram_id = ?`, [telegramId])
   }
 
-  return { init, getSaldo, addTransaccion, getHistorial, getTransaccionCount, getTotalesMes, reset }
+  async function setPresupuesto(telegramId: number, anio: number, mes: number, monto: number) {
+    const clave = `presupuesto_${anio}_${mes}`
+    await exec(
+      `INSERT OR REPLACE INTO user_config (telegram_id, clave, valor) VALUES (?, ?, ?)`,
+      [telegramId, clave, String(monto)]
+    )
+  }
+
+  async function getPresupuesto(telegramId: number, anio: number, mes: number): Promise<number | null> {
+    const clave = `presupuesto_${anio}_${mes}`
+    const res = await exec(
+      `SELECT valor FROM user_config WHERE telegram_id = ? AND clave = ?`,
+      [telegramId, clave]
+    )
+    const val = res?.rows?.[0]?.[0] as string | undefined
+    return val ? parseInt(val, 10) : null
+  }
+
+  async function deleteLastTransaccion(telegramId: number): Promise<{ monto: number; concepto: string; tipo: string } | null> {
+    const res = await exec(
+      `SELECT id, tipo, monto, concepto FROM transacciones
+       WHERE telegram_id = ? ORDER BY id DESC LIMIT 1`,
+      [telegramId]
+    )
+    if (!res?.rows?.length) return null
+    const row = res.rows[0]
+    await exec(`DELETE FROM transacciones WHERE id = ? AND telegram_id = ?`, [row[0], telegramId])
+    return { monto: row[2] as number, concepto: row[3] as string, tipo: row[1] as string }
+  }
+
+  async function getAllTransacciones(telegramId: number): Promise<unknown[][]> {
+    const res = await exec(
+      `SELECT id, tipo, monto, concepto, anio, mes, fecha FROM transacciones
+       WHERE telegram_id = ? ORDER BY id ASC`,
+      [telegramId]
+    )
+    return res?.rows ?? []
+  }
+
+  return {
+    init, getSaldo, addTransaccion, getHistorial, getTransaccionCount,
+    getTotalesMes, reset, setPresupuesto, getPresupuesto,
+    deleteLastTransaccion, getAllTransacciones,
+  }
 }
 
 export type Db = ReturnType<typeof createDb>

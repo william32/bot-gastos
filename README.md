@@ -85,9 +85,15 @@ https://api.telegram.org/bot<TU_TOKEN>/setWebhook?url=https://tu-worker.workers.
 | `/saldo` | Ver saldo actual |
 | `/ingreso 50000 sueldo` | Registrar ingreso |
 | `gasté 5000 en almuerzo` | Registrar gasto (texto libre) |
+| `-5000 almuerzo` | Atajo para gasto (texto libre) |
 | `ingresé 50000 sueldo` | Registrar ingreso (texto libre) |
 | `/historial` | Transacciones del mes actual + resumen |
 | `/historial 2026 5` | Transacciones de un mes específico |
+| `/presupuesto` | Muestra presupuesto del mes actual |
+| `/presupuesto 500000` | Fija presupuesto mensual |
+| `/presupuesto 0` | Elimina el presupuesto del mes |
+| `/deshacer` | Borra la última transacción |
+| `/exportar` | Descarga CSV con todas las transacciones |
 | `/reset` | Borrar todo el historial |
 
 ## Estructura

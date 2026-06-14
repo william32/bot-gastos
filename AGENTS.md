@@ -86,6 +86,13 @@ CREATE TABLE IF NOT EXISTS transacciones (
 
 CREATE INDEX IF NOT EXISTS idx_trans_user_mes
   ON transacciones(telegram_id, anio, mes);
+
+CREATE TABLE IF NOT EXISTS user_config (
+  telegram_id INTEGER NOT NULL,
+  clave TEXT NOT NULL,
+  valor TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (telegram_id, clave)
+);
 ```
 
 ### Funciones DB disponibles
@@ -99,6 +106,10 @@ CREATE INDEX IF NOT EXISTS idx_trans_user_mes
 | `getTotalesMes(id, anio, mes)` | Suma de ingresos y gastos de un mes    |
 | `getTransaccionCount(id)` | Cantidad de transacciones                    |
 | `reset(id)`          | Elimina todas las transacciones del usuario      |
+| `setPresupuesto(id, anio, mes, monto)` | Fija presupuesto mensual          |
+| `getPresupuesto(id, anio, mes)` | Obtiene presupuesto del mes (o null)       |
+| `deleteLastTransaccion(id)` | Borra y retorna la última transacción        |
+| `getAllTransacciones(id)` | Todas las transacciones para exportar           |
 
 ### API de Turso
 
@@ -151,6 +162,12 @@ Se usa la HTTP API en `/v2/pipeline`. Formato de respuesta:
 | `/saldo`                             | Muestra saldo actual                              |
 | `/historial`                         | Transacciones del mes actual + resumen             |
 | `/historial 2026 6`                  | Transacciones de Junio 2026 + resumen             |
+| `-5000 almuerzo`                     | Atajo para gasto (texto libre)                    |
+| `/presupuesto`                       | Muestra presupuesto del mes actual                |
+| `/presupuesto 500000`                | Fija presupuesto mensual                          |
+| `/presupuesto 0`                     | Elimina el presupuesto del mes                    |
+| `/deshacer`                          | Borra la última transacción                       |
+| `/exportar`                          | Descarga CSV con todas las transacciones          |
 | `/reset`                             | Borra todo el historial                           |
 
 ### Historial por mes

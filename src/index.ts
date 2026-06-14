@@ -28,6 +28,29 @@ async function sendMessage(token: string, chatId: number, text: string): Promise
   return { message_id: data.result?.message_id }
 }
 
+async function sendFile(token: string, chatId: number, csv: string, filename: string) {
+  const boundary = `boundary_${Date.now()}`
+  const encoder = new TextEncoder()
+  const body = [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="chat_id"`,
+    '',
+    String(chatId),
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="document"; filename="${filename}"`,
+    'Content-Type: text/csv',
+    '',
+    csv,
+    `--${boundary}--`,
+  ].join('\r\n')
+
+  await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+    body,
+  })
+}
+
 async function procesarMensaje(update: TelegramUpdate, env: Env) {
   try {
     const msg = update.message
@@ -138,6 +161,66 @@ async function procesarMensaje(update: TelegramUpdate, env: Env) {
     return
   }
 
+  if (text.startsWith('/presupuesto')) {
+    const ahora = new Date()
+    const anio = ahora.getFullYear()
+    const mes = ahora.getMonth() + 1
+    const partes = text.split(/\s+/)
+    if (!partes[1]) {
+      const actual = await db.getPresupuesto(msg.from.id, anio, mes)
+      if (actual) {
+        await sendMessage(token, chatId, `📋 Presupuesto de ${mes}/${anio}: ${formatearSaldo(actual)} CLP`)
+      } else {
+        await sendMessage(token, chatId, 'No tienes presupuesto este mes. Usa: /presupuesto 500000')
+      }
+      return
+    }
+    const montoStr = partes[1].replace(/\./g, '').match(/\d+/)
+    if (!montoStr) {
+      await sendMessage(token, chatId, 'Usa: /presupuesto 500000')
+      return
+    }
+    const monto = parseInt(montoStr[0], 10)
+    if (isNaN(monto) || monto < 0) {
+      await sendMessage(token, chatId, 'Monto inválido.')
+      return
+    }
+    if (monto === 0) {
+      await db.setPresupuesto(msg.from.id, anio, mes, 0)
+      await sendMessage(token, chatId, `🗑️ Presupuesto de ${mes}/${anio} eliminado.`)
+    } else {
+      await db.setPresupuesto(msg.from.id, anio, mes, monto)
+      await sendMessage(token, chatId, `✅ Presupuesto de ${mes}/${anio}: ${formatearSaldo(monto)} CLP`)
+    }
+    return
+  }
+
+  if (text.startsWith('/deshacer')) {
+    const eliminado = await db.deleteLastTransaccion(msg.from.id)
+    if (!eliminado) {
+      await sendMessage(token, chatId, 'No hay transacciones para deshacer.')
+      return
+    }
+    const icono = eliminado.tipo === 'gasto' ? '🔴' : '🟢'
+    await sendMessage(token, chatId, `↩️ Deshecho: ${icono} ${eliminado.tipo} de ${formatearSaldo(eliminado.monto)} en ${eliminado.concepto}`)
+    return
+  }
+
+  if (text.startsWith('/exportar')) {
+    const rows = await db.getAllTransacciones(msg.from.id)
+    if (rows.length === 0) {
+      await sendMessage(token, chatId, '📭 No hay transacciones para exportar.')
+      return
+    }
+    const header = 'id,tipo,monto,concepto,año,mes,fecha'
+    const csv = rows.map((r) =>
+      [r[0], r[1], r[2], `"${(r[3] as string).replace(/"/g, '""')}"`, r[4], r[5], r[6]].join(',')
+    ).join('\n')
+    await sendFile(token, chatId, header + '\n' + csv, 'transacciones.csv')
+    await sendMessage(token, chatId, `📄 Exportadas ${rows.length} transacciones.`)
+    return
+  }
+
   if (text.startsWith('/reset')) {
     await db.reset(msg.from.id)
     dbInit = null
@@ -156,19 +239,34 @@ async function procesarMensaje(update: TelegramUpdate, env: Env) {
   }
 
   if (text) {
-    const esIngreso = /^(ingres[éeí]|recib[ií]|deposit[aá]ron|abonaron|ingreso)\b/i.test(text)
+    const esGastoShortcut = /^-\d+/.test(text)
+    const esIngreso = !esGastoShortcut && /^(ingres[éeí]|recib[ií]|deposit[aá]ron|abonaron|ingreso)\b/i.test(text)
     const parseado = parsearGasto(text)
     if (!parseado) {
-      await sendMessage(token, chatId, 'No entendí. Escribe algo como:\n"gasté 5000 en almuerzo"\n"ingresé 50000"\n"5000 almuerzo"\nO consulta /saldo, /historial')
+      await sendMessage(token, chatId, 'No entendí. Escribe algo como:\n"gasté 5000 en almuerzo"\n"ingresé 50000"\n"5000 almuerzo"\n"-5000 almuerzo"\nO consulta /saldo, /historial')
       return
     }
 
-    const tipo = esIngreso ? 'ingreso' : 'gasto'
+    const tipo = esGastoShortcut || !esIngreso ? 'gasto' : 'ingreso'
     await db.addTransaccion(msg.from.id, tipo, parseado.monto, parseado.concepto)
     const saldo = await db.getSaldo(msg.from.id)
-    const advertencia = saldo < 0 ? '\n⚠️ ¡Estás en negativo!' : ''
+    let advertencia = saldo < 0 ? '\n⚠️ ¡Estás en negativo!' : ''
 
-    if (esIngreso) {
+    if (tipo === 'gasto') {
+      const ahora = new Date()
+      const presupuesto = await db.getPresupuesto(msg.from.id, ahora.getFullYear(), ahora.getMonth() + 1)
+      if (presupuesto && presupuesto > 0) {
+        const totales = await db.getTotalesMes(msg.from.id, ahora.getFullYear(), ahora.getMonth() + 1)
+        if (totales.totalGastos > presupuesto) {
+          advertencia += '\n⚠️ ¡Superaste tu presupuesto de ' + formatearSaldo(presupuesto) + ' CLP!'
+        } else if (totales.totalGastos > presupuesto * 0.8) {
+          const restante = presupuesto - totales.totalGastos
+          advertencia += `\n⚠️ Te queda ${formatearSaldo(restante)} CLP de tu presupuesto (${Math.round(totales.totalGastos / presupuesto * 100)}% usado).`
+        }
+      }
+    }
+
+    if (tipo === 'ingreso') {
       await sendMessage(token, chatId, `🟢 Ingresaste ${formatearSaldo(parseado.monto)} CLP en ${parseado.concepto}.\n💰 Saldo actual: ${formatearSaldo(saldo)} CLP${advertencia}`)
     } else {
       await sendMessage(token, chatId, `🔴 Gastaste ${formatearSaldo(parseado.monto)} CLP en ${parseado.concepto}.\n💰 Te quedan ${formatearSaldo(saldo)} CLP${advertencia}`)
